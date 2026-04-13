@@ -1,7 +1,12 @@
 # src/controller.py
 from ryu.base import app_manager
 from ryu.controller import ofp_event
-from ryu.controller.handler import MAIN_DISPATCHER, DEAD_DISPATCHER, set_ev_cls, CONFIG_DISPATCHER
+from ryu.controller.handler import (
+    MAIN_DISPATCHER,
+    DEAD_DISPATCHER,
+    set_ev_cls,
+    CONFIG_DISPATCHER,
+)
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp, arp
 from ryu.topology import event, switches
@@ -17,14 +22,24 @@ import networkx as nx
 from itertools import islice
 
 # Constants for classes (0=VoIP, 1=Video, 2=HTTP, 3=FTP, 4=DNS, 5=Background)
-CLASS_NAMES = {0: 'VoIP', 1: 'Video', 2: 'HTTP', 3: 'FTP', 4: 'DNS', 5: 'Background'}
+CLASS_NAMES = {0: "VoIP", 1: "Video", 2: "HTTP", 3: "FTP", 4: "DNS", 5: "Background"}
 PACKETS_TO_COLLECT = 10  # Number of packets before classification
-K_PATHS = 3              # Number of paths to consider for RL
-NUM_QUEUES = 3           # 0=High, 1=Medium, 2=Best Effort
+K_PATHS = 3  # Number of paths to consider for RL
+NUM_QUEUES = 3  # 0=High, 1=Medium, 2=Best Effort
+
 
 class QLearningAgent:
     """Tabular Q-Learning Agent for SDN QoS Routing"""
-    def __init__(self, num_actions=K_PATHS * NUM_QUEUES, alpha=0.1, gamma=0.9, epsilon=1.0, min_epsilon=0.1, decay=0.995):
+
+    def __init__(
+        self,
+        num_actions=K_PATHS * NUM_QUEUES,
+        alpha=0.1,
+        gamma=0.9,
+        epsilon=1.0,
+        min_epsilon=0.1,
+        decay=0.995,
+    ):
         self.q_table = {}
         self.num_actions = num_actions
         self.alpha = alpha
@@ -48,15 +63,16 @@ class QLearningAgent:
         q_values = self.get_q_values(state)
         next_q_values = self.get_q_values(next_state)
         best_next_action = np.argmax(next_q_values)
-        
+
         # Q-Learning Formula
         td_target = reward + self.gamma * next_q_values[best_next_action]
         td_error = td_target - q_values[action]
         q_values[action] += self.alpha * td_error
-        
+
         # Decay epsilon
         if self.epsilon > self.min_epsilon:
             self.epsilon *= self.decay
+
 
 class QoSController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -66,20 +82,22 @@ class QoSController(app_manager.RyuApp):
         self.mac_to_port = {}
         self.datapaths = {}
         self.net = nx.DiGraph()  # Topology Graph
-        
+
         # Flow Tracking: (src_ip, dst_ip, src_port, dst_port, proto) -> dict
         self.flow_tracker = {}
-        
+
         # RL Agent initialization
         self.rl_agent = QLearningAgent()
-        
+
         # Load ML Model
-        model_path = os.path.join(os.path.dirname(__file__), '../data/dt_model.pkl')
+        model_path = os.path.join(os.path.dirname(__file__), "../data/dt_model.pkl")
         if os.path.exists(model_path):
             self.logger.info("Loading Decision Tree Model from %s", model_path)
             self.clf = joblib.load(model_path)
         else:
-            self.logger.error("Model file not found! Please run train_classifier.py first.")
+            self.logger.error(
+                "Model file not found! Please run train_classifier.py first."
+            )
             self.clf = None
 
         self.monitor_thread = hub.spawn(self._monitor)
@@ -94,23 +112,28 @@ class QoSController(app_manager.RyuApp):
         # We specify NO MATCH (meaning it matches everything)
         # Action is to send it to the controller (OFPP_CONTROLLER)
         match = parser.OFPMatch()
-        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
-                                          ofproto.OFPCML_NO_BUFFER)]
+        actions = [
+            parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)
+        ]
         self.add_flow(datapath, 0, match, actions)
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS,
-                                             actions)]
+        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
         if buffer_id:
-            mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
-                                    priority=priority, match=match,
-                                    instructions=inst)
+            mod = parser.OFPFlowMod(
+                datapath=datapath,
+                buffer_id=buffer_id,
+                priority=priority,
+                match=match,
+                instructions=inst,
+            )
         else:
-            mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
-                                    match=match, instructions=inst)
+            mod = parser.OFPFlowMod(
+                datapath=datapath, priority=priority, match=match, instructions=inst
+            )
         datapath.send_msg(mod)
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
@@ -118,11 +141,11 @@ class QoSController(app_manager.RyuApp):
         datapath = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             if datapath.id not in self.datapaths:
-                self.logger.info('Register datapath: %016x', datapath.id)
+                self.logger.info("Register datapath: %016x", datapath.id)
                 self.datapaths[datapath.id] = datapath
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
-                self.logger.info('Unregister datapath: %016x', datapath.id)
+                self.logger.info("Unregister datapath: %016x", datapath.id)
                 del self.datapaths[datapath.id]
 
     @set_ev_cls(event.EventSwitchEnter)
@@ -152,11 +175,11 @@ class QoSController(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def _flow_stats_reply_handler(self, ev):
-        pass # Evaluate reward here later for RL state update
+        pass  # Evaluate reward here later for RL state update
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
-        pass # Update link utilization here
+        pass  # Update link utilization here
 
     def k_shortest_paths(self, src, dst, k=K_PATHS):
         try:
@@ -173,42 +196,77 @@ class QoSController(app_manager.RyuApp):
         return (class_id, util_level, delay_level)
 
     def _extract_classify_and_route(self, flow_key, tracker, src_dpid, dst_dpid, msg):
-        timestamps = tracker['timestamps']
-        sizes = tracker['packets']
-        
+        timestamps = tracker["timestamps"]
+        sizes = tracker["packets"]
+
         duration = timestamps[-1] - timestamps[0]
         total_packets = len(sizes)
         total_bytes = sum(sizes)
         mean_pkt_size = np.mean(sizes)
         std_pkt_size = np.std(sizes)
-        
+
         iats = np.diff(timestamps)
         mean_iat = np.mean(iats) if len(iats) > 0 else 0
         std_iat = np.std(iats) if len(iats) > 0 else 0
-        
-        proto, sport, dport = flow_key[4], flow_key[2], flow_key[3]
-        pkt_size_ratio = np.mean(sizes[:5]) / mean_pkt_size if mean_pkt_size > 0 else 1.0
 
-        features = [[duration, total_packets, total_bytes, mean_pkt_size, std_pkt_size, mean_iat, std_iat, proto, sport, dport, pkt_size_ratio]]
-        
+        proto, sport, dport = flow_key[4], flow_key[2], flow_key[3]
+        pkt_size_ratio = (
+            np.mean(sizes[:5]) / mean_pkt_size if mean_pkt_size > 0 else 1.0
+        )
+
+        features = [
+            [
+                duration,
+                total_packets,
+                total_bytes,
+                mean_pkt_size,
+                std_pkt_size,
+                mean_iat,
+                std_iat,
+                proto,
+                sport,
+                dport,
+                pkt_size_ratio,
+            ]
+        ]
+
         if self.clf:
-            feature_names = ['duration', 'total_packets', 'total_bytes', 'mean_pkt_size', 'std_pkt_size', 'mean_iat', 'std_iat', 'protocol', 'src_port', 'dst_port', 'pkt_size_ratio']
+            feature_names = [
+                "duration",
+                "total_packets",
+                "total_bytes",
+                "mean_pkt_size",
+                "std_pkt_size",
+                "mean_iat",
+                "std_iat",
+                "protocol",
+                "src_port",
+                "dst_port",
+                "pkt_size_ratio",
+            ]
             df = pd.DataFrame(features, columns=feature_names)
             pred_class = self.clf.predict(df)[0]
-            tracker['class_id'] = pred_class
-            
-            self.logger.info("CLASSIFIED FLOW %s -> Class %s", flow_key, CLASS_NAMES.get(pred_class))
+            tracker["class_id"] = pred_class
+
+            self.logger.info(
+                "CLASSIFIED FLOW %s -> Class %s", flow_key, CLASS_NAMES.get(pred_class)
+            )
 
             # --- RL Routing Decision ---
             state = self.get_rl_state(pred_class)
             action_idx = self.rl_agent.get_action(state)
-            
+
             # Decode Action: Action = (Path_Index * NUM_QUEUES) + Queue_Index
             path_idx = action_idx // NUM_QUEUES
             queue_idx = action_idx % NUM_QUEUES
-            
-            self.logger.info("RL Decision -> Path %d, Queue %d (Epsilon: %.2f)", path_idx, queue_idx, self.rl_agent.epsilon)
-            
+
+            self.logger.info(
+                "RL Decision -> Path %d, Queue %d (Epsilon: %.2f)",
+                path_idx,
+                queue_idx,
+                self.rl_agent.epsilon,
+            )
+
             # Proceed to map routing via QoS manager
             # This logic will calculate the physical path and insert OpenFlow Rules
             paths = self.k_shortest_paths(src_dpid, dst_dpid)
@@ -217,20 +275,24 @@ class QoSController(app_manager.RyuApp):
                 safe_path_idx = min(path_idx, len(paths) - 1)
                 selected_path = paths[safe_path_idx]
                 self._install_path(selected_path, flow_key, queue_idx, msg)
-                
+
                 # --- Simulate RL Environment Feedback (Reward) ---
                 # Give a positive reward for successfully finding a path and mapping a queue.
                 reward = 10.0
             else:
-                self.logger.warning("No path found between %s and %s", src_dpid, dst_dpid)
+                self.logger.warning(
+                    "No path found between %s and %s", src_dpid, dst_dpid
+                )
                 reward = -10.0
-                
+
             # Update the Q-Learning Agent so Epsilon decays and it "learns"
             next_state = self.get_rl_state(pred_class)
             self.rl_agent.update(state, action_idx, reward, next_state)
 
     def _install_path(self, path, flow_key, queue_idx, msg):
-        self.logger.info("Installing path %s with Queue %d for flow %s", path, queue_idx, flow_key)
+        self.logger.info(
+            "Installing path %s with Queue %d for flow %s", path, queue_idx, flow_key
+        )
         # Note: Actual OpenFlow multi-hop installation requires iterating over the path
         # and sending FlowMods to each datapath along the route.
 
@@ -240,11 +302,11 @@ class QoSController(app_manager.RyuApp):
         datapath = msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-        in_port = msg.match['in_port']
+        in_port = msg.match["in_port"]
 
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
-        if eth.ethertype == 34525: # LLDP
+        if eth.ethertype == 34525:  # LLDP
             return
 
         dst = eth.dst
@@ -255,36 +317,50 @@ class QoSController(app_manager.RyuApp):
         if ip_pkt:
             tcp_pkt = pkt.get_protocol(tcp.tcp)
             udp_pkt = pkt.get_protocol(udp.udp)
-            
+
             src_port = 0
             dst_port = 0
             proto = ip_pkt.proto
-            
+
             if tcp_pkt:
                 src_port = tcp_pkt.src_port
                 dst_port = tcp_pkt.dst_port
             elif udp_pkt:
                 src_port = udp_pkt.src_port
                 dst_port = udp_pkt.dst_port
-                
+
             if src_port != 0 and dst_port != 0:
                 flow_key = (ip_pkt.src, ip_pkt.dst, src_port, dst_port, proto)
-                
+
                 if flow_key not in self.flow_tracker:
-                    self.flow_tracker[flow_key] = {'packets': [], 'timestamps': [], 'class_id': None}
+                    self.flow_tracker[flow_key] = {
+                        "packets": [],
+                        "timestamps": [],
+                        "class_id": None,
+                    }
                     self.logger.info("NEW FLOW DETECTED: %s", str(flow_key))
-                
+
                 tracker = self.flow_tracker[flow_key]
-                if tracker['class_id'] is None and len(tracker['packets']) < PACKETS_TO_COLLECT:
-                    tracker['packets'].append(len(msg.data))
-                    tracker['timestamps'].append(time.time())
-                    
-                    if len(tracker['packets']) % 2 == 0:
-                         self.logger.info("Collecting packet %d/%d for flow %s", len(tracker['packets']), PACKETS_TO_COLLECT, str(flow_key))
-                    
-                    if len(tracker['packets']) == PACKETS_TO_COLLECT:
+                if (
+                    tracker["class_id"] is None
+                    and len(tracker["packets"]) < PACKETS_TO_COLLECT
+                ):
+                    tracker["packets"].append(len(msg.data))
+                    tracker["timestamps"].append(time.time())
+
+                    if len(tracker["packets"]) % 2 == 0:
+                        self.logger.info(
+                            "Collecting packet %d/%d for flow %s",
+                            len(tracker["packets"]),
+                            PACKETS_TO_COLLECT,
+                            str(flow_key),
+                        )
+
+                    if len(tracker["packets"]) == PACKETS_TO_COLLECT:
                         # Dummy dst_dpid for testing - in reality mapped from MAC
-                        self._extract_classify_and_route(flow_key, tracker, dpid, dpid, msg)
+                        self._extract_classify_and_route(
+                            flow_key, tracker, dpid, dpid, msg
+                        )
 
         # Base L2 Learning Forwarding (for initial setup)
         self.mac_to_port.setdefault(dpid, {})
@@ -301,11 +377,16 @@ class QoSController(app_manager.RyuApp):
         # If we install a flow rule on the first packet, the switch handles
         # packets 2-10 directly, and the controller NEVER sees them to classify!
         # For now, let the controller forward packets until classification is done.
-        
+
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
 
-        out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
-                                  in_port=in_port, actions=actions, data=data)
+        out = parser.OFPPacketOut(
+            datapath=datapath,
+            buffer_id=msg.buffer_id,
+            in_port=in_port,
+            actions=actions,
+            data=data,
+        )
         datapath.send_msg(out)

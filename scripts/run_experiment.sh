@@ -17,10 +17,10 @@ fi
 # Detect if a virtual environment is being used
 RYU_CMD="ryu-manager"
 PY_CMD="python3"
-if [ -f "ryu_venv/bin/ryu-manager" ]; then
-    echo "[*] Found Python 3.9 virtual environment (ryu_venv). Using it..."
-    RYU_CMD="ryu_venv/bin/ryu-manager"
-    PY_CMD="ryu_venv/bin/python"
+if [ -f "/home/mohammed/ryu-env/bin/ryu-manager" ]; then
+    echo "[*] Found Python 3.9 virtual environment (ryu-env). Using it..."
+    RYU_CMD="/home/mohammed/ryu-env/bin/ryu-manager"
+    PY_CMD="/home/mohammed/ryu-env/bin/python"
 fi
 
 # Clean previous Mininet instances to avoid conflicts
@@ -30,15 +30,13 @@ mn -c > /dev/null 2>&1
 # Ensure data directory exists for logs
 mkdir -p data
 
-# Start Ryu Controller in the background
-echo "[*] Starting Ryu Controller with QoS and ML integration..."
-$RYU_CMD src/controller.py --observe-links > data/ryu_controller.log 2>&1 &
-RYU_PID=$!
-echo "    -> Ryu running in background (PID: $RYU_PID)"
-echo "    -> Controller logs are being saved to data/ryu_controller.log"
+# Start Ryu Controller in a NEW terminal window
+echo "[*] Opening a new terminal for Ryu Controller..."
+# We use sudo -E to preserve the display environment variables so the terminal can open
+sudo -E -u $SUDO_USER gnome-terminal -- bash -c "cd /home/mohammed/NewFinalProject && source /home/mohammed/ryu-env/bin/activate && ryu-manager src/controller.py --observe-links; exec bash"
 
 # Wait for controller to fully boot
-echo "[*] Waiting 5 seconds for Ryu to initialize..."
+echo "[*] Waiting 5 seconds for Ryu to initialize in the new window..."
 sleep 5
 
 # Start Mininet Custom Topology
@@ -56,7 +54,7 @@ python3 scripts/topology.py
 # Cleanup after user exits Mininet
 echo ""
 echo "[*] Mininet session ended. Cleaning up..."
-echo "    -> Killing Ryu Controller (PID: $RYU_PID)..."
-kill -9 $RYU_PID
+echo "    -> Please close the Ryu Controller terminal window manually, or wait while I force kill it..."
+pkill -f "ryu-manager"
 
-echo "[*] Experiment script finished. Check 'data/ryu_controller.log' for ML and RL outputs."
+echo "[*] Experiment script finished. The test is complete!"
