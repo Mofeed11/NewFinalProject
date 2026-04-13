@@ -263,11 +263,15 @@ class QoSController(app_manager.RyuApp):
                 
                 if flow_key not in self.flow_tracker:
                     self.flow_tracker[flow_key] = {'packets': [], 'timestamps': [], 'class_id': None}
+                    self.logger.info("NEW FLOW DETECTED: %s", str(flow_key))
                 
                 tracker = self.flow_tracker[flow_key]
                 if tracker['class_id'] is None and len(tracker['packets']) < PACKETS_TO_COLLECT:
                     tracker['packets'].append(len(msg.data))
                     tracker['timestamps'].append(time.time())
+                    
+                    if len(tracker['packets']) % 2 == 0:
+                         self.logger.info("Collecting packet %d/%d for flow %s", len(tracker['packets']), PACKETS_TO_COLLECT, str(flow_key))
                     
                     if len(tracker['packets']) == PACKETS_TO_COLLECT:
                         # Dummy dst_dpid for testing - in reality mapped from MAC
@@ -284,14 +288,10 @@ class QoSController(app_manager.RyuApp):
 
         actions = [parser.OFPActionOutput(out_port)]
 
-        if out_port != ofproto.OFPP_FLOOD:
-            match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
-            # Verify if we have a valid buffer_id
-            if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-                self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-                return
-            else:
-                self.add_flow(datapath, 1, match, actions)
+        # --- FIX: Do NOT install flow rules immediately for L2 traffic. ---
+        # If we install a flow rule on the first packet, the switch handles
+        # packets 2-10 directly, and the controller NEVER sees them to classify!
+        # For now, let the controller forward packets until classification is done.
         
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
