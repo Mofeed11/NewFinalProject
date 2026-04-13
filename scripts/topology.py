@@ -80,7 +80,9 @@ class CustomTreeTopo(Topo):
 
 def run_topology():
     topo = CustomTreeTopo()
-    net = Mininet(topo=topo, controller=RemoteController, switch=OVSSwitch, link=TCLink)
+    
+    # We explicitly tell Mininet NOT to build a default controller here
+    net = Mininet(topo=topo, controller=None, switch=OVSSwitch, link=TCLink)
     
     # Add Remote Ryu Controller
     c0 = net.addController('c0', controller=RemoteController, ip='127.0.0.1', port=6653)
