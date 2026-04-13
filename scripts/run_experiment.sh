@@ -9,9 +9,18 @@ echo " Starting Graduation Project 1 Experiment Setup   "
 echo "=================================================="
 
 # Check if running as root (Required for Mininet)
-if [ "$EUID" -ne 0 ]
-  then echo "Please run as root (use: sudo ./scripts/run_experiment.sh)"
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root (use: sudo ./scripts/run_experiment.sh)"
   exit
+fi
+
+# Detect if a virtual environment is being used
+RYU_CMD="ryu-manager"
+PY_CMD="python3"
+if [ -f "ryu_venv/bin/ryu-manager" ]; then
+    echo "[*] Found Python 3.9 virtual environment (ryu_venv). Using it..."
+    RYU_CMD="ryu_venv/bin/ryu-manager"
+    PY_CMD="ryu_venv/bin/python"
 fi
 
 # Clean previous Mininet instances to avoid conflicts
@@ -23,7 +32,7 @@ mkdir -p data
 
 # Start Ryu Controller in the background
 echo "[*] Starting Ryu Controller with QoS and ML integration..."
-ryu-manager src/controller.py --observe-links > data/ryu_controller.log 2>&1 &
+$RYU_CMD src/controller.py --observe-links > data/ryu_controller.log 2>&1 &
 RYU_PID=$!
 echo "    -> Ryu running in background (PID: $RYU_PID)"
 echo "    -> Controller logs are being saved to data/ryu_controller.log"
