@@ -212,9 +212,13 @@ class QoSController(app_manager.RyuApp):
             # Proceed to map routing via QoS manager
             # This logic will calculate the physical path and insert OpenFlow Rules
             paths = self.k_shortest_paths(src_dpid, dst_dpid)
-            if paths and len(paths) > path_idx:
-                selected_path = paths[path_idx]
+            if paths:
+                # Safely cap the path index if fewer paths exist
+                safe_path_idx = min(path_idx, len(paths) - 1)
+                selected_path = paths[safe_path_idx]
                 self._install_path(selected_path, flow_key, queue_idx, msg)
+            else:
+                self.logger.warning("No path found between %s and %s", src_dpid, dst_dpid)
 
     def _install_path(self, path, flow_key, queue_idx, msg):
         self.logger.info("Installing path %s with Queue %d for flow %s", path, queue_idx, flow_key)

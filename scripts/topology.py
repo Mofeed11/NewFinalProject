@@ -62,10 +62,10 @@ class CustomTreeTopo(Topo):
         self.addLink(s7, s13, **linkopts)
         self.addLink(s8, s14, **linkopts)
         
-        # Cross links for diversity
-        self.addLink(s10, s11, **linkopts)
-        self.addLink(s12, s13, **linkopts)
-        self.addLink(s5, s7, **linkopts) # Example cross core link
+        # Cross links for diversity (COMMENTED OUT TO PREVENT BROADCAST STORMS)
+        # self.addLink(s10, s11, **linkopts)
+        # self.addLink(s12, s13, **linkopts)
+        # self.addLink(s5, s7, **linkopts) # Example cross core link
 
         # Connect Hosts to Access Switches
         self.addLink(h1, s10, **linkopts)
