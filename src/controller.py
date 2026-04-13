@@ -217,8 +217,17 @@ class QoSController(app_manager.RyuApp):
                 safe_path_idx = min(path_idx, len(paths) - 1)
                 selected_path = paths[safe_path_idx]
                 self._install_path(selected_path, flow_key, queue_idx, msg)
+                
+                # --- Simulate RL Environment Feedback (Reward) ---
+                # Give a positive reward for successfully finding a path and mapping a queue.
+                reward = 10.0
             else:
                 self.logger.warning("No path found between %s and %s", src_dpid, dst_dpid)
+                reward = -10.0
+                
+            # Update the Q-Learning Agent so Epsilon decays and it "learns"
+            next_state = self.get_rl_state(pred_class)
+            self.rl_agent.update(state, action_idx, reward, next_state)
 
     def _install_path(self, path, flow_key, queue_idx, msg):
         self.logger.info("Installing path %s with Queue %d for flow %s", path, queue_idx, flow_key)
